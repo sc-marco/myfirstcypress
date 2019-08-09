@@ -1,42 +1,48 @@
+# first, install Cypress
 image: cypress/base:10
-stages:
-  - build
-  - test
 
-install:
-  image: cypress/base:10
-  stage: build
+# Set some variables 
+variables:
+  CALLIOPE_API_KEY: ZDhjMDFjMjAwOWM0ZjBmNDA1YWE0MTFlNjNmZTg2ZTAxZjhlNmY4NDc0MWQ1NGIwNzcyNTA3MjZhMzRjN2U4ZTky
+  CALLIOPE_PROFILE_ID: 629
+  # Used for caching
+  npm_config_cache: "$CI_PROJECT_DIR/.npm"
+  CYPRESS_CACHE_FOLDER: "$CI_PROJECT_DIR/cache/Cypress"
 
-  script:
-    - npm ci
-    # show where the Cypress test runner binaries are cached
-    - $(npm bin)/cypress cache path
-    # show all installed versions of Cypress binary
-    - $(npm bin)/cypress cache list
-    - $(npm bin)/cypress verify
+# cache installation files per branch
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - .npm
+    - cache/Cypress
+    - node_modules
 
-cypress-e2e:
-  image: cypress/base:10
-  stage: test
+# Install the stuff on the container
+before_script:
+  - npm ci
+  - $(npm bin)/cypress cache path
+  # show all installed versions of Cypress binary
+  - $(npm bin)/cypress cache list
+  - $(npm bin)/cypress verify
+  - apt-get install -y zip
+
+# This is set to manual, of course your can create a whole automatic pipeline per deploy, but in this case it's a simple play button to click when you want to run the test.
+run-test:
   script:
     - $(npm bin)/cypress run
+    - zip -r ./myReport/screenshots.zip ./myReport/screenshots
   artifacts:
     expire_in: 1 week
     when: always
     paths:
-    - cypress/screenshots
-    - cypress/videos
+      - ./myReport
 
-cypress-e2e-chrome:
-  image: cypress/browsers:chrome76
-  stage: test
-  script:
-    - npm install
-    - $(npm bin)/cypress run --  --spec "cypress\integration\testautomation_info\login\login.spec.js"
-    - $(npm bin)/cypress run --browser chrome
-  artifacts:
-    expire_in: 1 week
-    when: always
-    paths:
-    - cypress/screenshots
-    - cypress/videos
+# After the job has run, import all the data to calliope.
+after_script:
+  - curl -X POST
+    --header "Content-Type:application/json"
+    --header "x-api-key:${API_KEY}"
+    --form "file[]=@myReport/myTestProfile.json"
+    --form "attachment[]=@myReport/myTestProfile.html"
+    --form "attachment[]=@myReport/screenshots.zip"
+    "https://app.calliope.pro/api/v2/profile/"${PROFILE_ID}"/report/import/?os=RSpec&platform=$CI_COMMIT_REF_SLUG&build=$REVISION"
